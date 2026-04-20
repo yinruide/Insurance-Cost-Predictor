@@ -1,0 +1,9 @@
+{
+  "mae_median_dollar": 4108.693540531981,
+  "rmse_median_dollar": 8233.70790294058,
+  "r2_median_dollar": 0.5381701820488995,
+  "interval_80_coverage": 0.7835820895522388,
+  "avg_interval_width_dollar": 9223.184375584251,
+  "n_train": 1070,
+  "n_test": 268
+}
