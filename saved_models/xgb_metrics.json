@@ -1,0 +1,22 @@
+{
+  "best_params": {
+    "colsample_bytree": 1.0,
+    "learning_rate": 0.05,
+    "max_depth": 3,
+    "n_estimators": 100,
+    "subsample": 0.7
+  },
+  "metrics": {
+    "MAE": 2447.41,
+    "RMSE": 4270.99,
+    "R2": 0.8825
+  },
+  "feature_importance": {
+    "age": 0.044,
+    "sex": 0.0072,
+    "bmi": 0.0961,
+    "children": 0.015,
+    "smoker": 0.8285,
+    "region": 0.0093
+  }
+}
