@@ -1,0 +1,21 @@
+{
+  "best_params": {
+    "max_depth": 10,
+    "min_samples_leaf": 4,
+    "min_samples_split": 10,
+    "n_estimators": 200
+  },
+  "metrics": {
+    "MAE": 2436.88,
+    "RMSE": 4353.04,
+    "R2": 0.8779
+  },
+  "feature_importance": {
+    "age": 0.1271,
+    "sex": 0.0026,
+    "bmi": 0.1909,
+    "children": 0.0111,
+    "smoker": 0.6616,
+    "region": 0.0067
+  }
+}
