@@ -133,12 +133,31 @@ def plot_clusters_pca(X_scaled, labels, centroids_scaled):
     ax.set_xlabel(f"PC 1 ({var_explained[0]:.1%} variance)")
     ax.set_ylabel(f"PC 2 ({var_explained[1]:.1%} variance)")
     ax.set_title("K-Means Clusters (PCA Projection)")
-    handles, labs = scatter.legend_elements()
-    centroid_handle = plt.Line2D([0], [0], marker="X", color="w",
-                                 markerfacecolor="black", markersize=10,
-                                 label="Centroids")
-    handles.append(centroid_handle)
-    ax.legend(handles=handles, title="Cluster", loc="upper right")
+    cluster_colors = plt.colormaps["Set1"]
+    cluster_handles = []
+    for cluster_id in sorted(np.unique(labels)):
+        cluster_handles.append(
+            plt.Line2D(
+                [0], [0],
+                marker="o",
+                linestyle="",
+                color="w",
+                markerfacecolor=cluster_colors(cluster_id / max(best := max(1, len(np.unique(labels)) - 1), 1)),
+                markeredgecolor=cluster_colors(cluster_id / max(best, 1)),
+                alpha=0.7,
+                markersize=8,
+                label=f"Cluster {cluster_id}",
+            )
+        )
+    centroid_handle = plt.Line2D(
+        [0], [0],
+        marker="X",
+        linestyle="",
+        color="black",
+        markersize=10,
+        label="Centroids",
+    )
+    ax.legend(handles=cluster_handles + [centroid_handle], title="Legend", loc="upper right")
 
     fig.tight_layout()
     return fig

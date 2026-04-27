@@ -4,3 +4,5 @@ scikit-learn
 torch
 streamlit
 matplotlib
+seaborn
+joblib

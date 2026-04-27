@@ -186,5 +186,10 @@ def train_mlp(
     return model, scaler, metrics, history
 
 
+def fit_mlp():
+    """Compatibility wrapper used by the app comparison layer."""
+    return train_mlp()
+
+
 if __name__ == "__main__":
     train_mlp()
