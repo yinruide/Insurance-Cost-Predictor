@@ -1,27 +1,22 @@
 """XGBoost with GridSearchCV."""
 
-import pandas as pd
+import sys
+from pathlib import Path
+
 import numpy as np
 from xgboost import XGBRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import joblib
 import json
-import os
 
-def load_data(path="data/insurance.csv"):
-    df = pd.read_csv(path)
-    le = LabelEncoder()
-    df["sex"]    = le.fit_transform(df["sex"])
-    df["smoker"] = le.fit_transform(df["smoker"])
-    df["region"] = le.fit_transform(df["region"])
-    return df
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+PREPROCESS_DIR = ROOT / "preprocess"
+SAVED_DIR = ROOT / "saved_models"
+sys.path.insert(0, str(PREPROCESS_DIR))
 
-def get_splits(df):
-    X = df.drop("charges", axis=1)
-    y = df["charges"]
-    return train_test_split(X, y, test_size=0.2, random_state=42)
+from preprocess import get_regressor_data_tree, split_unscaled
 
 def tune_xgboost(X_train, y_train):
     param_grid = {
@@ -31,7 +26,7 @@ def tune_xgboost(X_train, y_train):
         "subsample":     [0.7, 0.8, 1.0],
         "colsample_bytree": [0.7, 0.8, 1.0],
     }
-    xgb = XGBRegressor(random_state=42, verbosity=0)
+    xgb = XGBRegressor(random_state=12138, verbosity=0)
     grid_search = GridSearchCV(
         estimator=xgb,
         param_grid=param_grid,
@@ -61,8 +56,9 @@ def get_feature_importance(model, feature_names):
     return dict(zip(feature_names, [round(float(v), 4) for v in importances]))
 
 if __name__ == "__main__":
-    df = load_data()
-    X_train, X_test, y_train, y_test = get_splits(df)
+    df = get_regressor_data_tree(path=str(ROOT / "data" / "insurance.csv"))
+    feature_names = [c for c in df.columns if c not in {"charges", "log_charges", "smoker"}]
+    X_train, X_test, y_train, y_test = split_unscaled(df, "charges")
 
     print("Tuning XGBoost...")
     best_model, best_params = tune_xgboost(X_train, y_train)
@@ -70,16 +66,14 @@ if __name__ == "__main__":
     print("\nEvaluation on test set:")
     metrics = evaluate(best_model, X_test, y_test)
 
-    feature_importance = get_feature_importance(best_model, X_train.columns.tolist())
+    feature_importance = get_feature_importance(best_model, feature_names)
     print(f"\nFeature importances: {feature_importance}")
 
-    os.makedirs("saved_models", exist_ok=True)
-    joblib.dump(best_model, "saved_models/xgboost_model.pkl")
+    SAVED_DIR.mkdir(exist_ok=True)
+    joblib.dump(best_model, SAVED_DIR / "xgboost_model.pkl")
 
     results = {"best_params": best_params, "metrics": metrics, "feature_importance": feature_importance}
-    with open("saved_models/xgb_metrics.json", "w") as f:
+    with open(SAVED_DIR / "xgb_metrics.json", "w") as f:
         json.dump(results, f, indent=2)
 
     print("\nSaved to saved_models/")
-
-

@@ -21,7 +21,7 @@ sys.path.insert(0, str(PREPROCESS_DIR))
 from preprocess import get_regressor_data_torch, split_scaled
 
 
-def set_seed(seed=42):
+def set_seed(seed=12138):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -78,7 +78,7 @@ def train_mlp(
     lr=1e-3,
     weight_decay=1e-4,
     patience=40,
-    seed=42,
+    seed=12138,
 ):
     set_seed(seed)
     SAVED_DIR.mkdir(exist_ok=True)
@@ -184,6 +184,11 @@ def train_mlp(
         print(f"{k}: {v}")
 
     return model, scaler, metrics, history
+
+
+def fit_mlp():
+    """Compatibility wrapper used by the app comparison layer."""
+    return train_mlp()
 
 
 if __name__ == "__main__":

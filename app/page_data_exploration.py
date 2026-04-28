@@ -16,6 +16,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+from shared import inject_global_styles, page_header, tags
+
 # constants
 _HERE = Path(__file__).resolve().parent
 DATA_PATH = str(_HERE.parent / "data" / "insurance.csv")
@@ -205,27 +207,17 @@ def section_kmeans(df_full):
 
     results = run_kmeans_cached(path=DATA_PATH, best_k=best_k)
 
-    # Model selection 
-    tab_select, tab_result, tab_validate = st.tabs([
-        "Model Selection",
+    st.caption(
+        "Use the slider, then read left to right: first see how the clusters change, "
+        "then validate them, then review why K=2 is the recommended default."
+    )
+
+    # Put the dynamic output first so the slider has an obvious effect.
+    tab_result, tab_validate, tab_select = st.tabs([
         "Cluster Results",
         "Cluster Validation",
+        "Model Selection",
     ])
-
-    with tab_select:
-        st.subheader("Elbow Method")
-        st.markdown(
-            "Inertia (within-cluster SSE) drops sharply at K=2, "
-            "with diminishing returns beyond that point."
-        )
-        show_fig(results["fig_elbow"])
-
-        st.subheader("Silhouette Scores by K")
-        st.markdown(
-            "K=2 achieves the highest silhouette score, confirming "
-            "two natural clusters in the data."
-        )
-        show_fig(results["fig_silhouette"])
 
     with tab_result:
         st.subheader("PCA Projection of Clusters")
@@ -234,6 +226,9 @@ def section_kmeans(df_full):
             "the first two principal components."
         )
         show_fig(results["fig_pca"])
+        st.caption(
+            "Each color corresponds to one cluster label. The black X markers show the learned centroids."
+        )
 
         st.subheader("Silhouette Samples Plot")
         st.markdown(
@@ -258,22 +253,33 @@ def section_kmeans(df_full):
         )
         show_fig(results["fig_box"])
 
+    with tab_select:
+        st.subheader("Elbow Method")
+        st.markdown(
+            "Inertia (within-cluster SSE) drops sharply at K=2, "
+            "with diminishing returns beyond that point."
+        )
+        show_fig(results["fig_elbow"])
+
+        st.subheader("Silhouette Scores by K")
+        st.markdown(
+            "K=2 achieves the highest silhouette score, confirming "
+            "two natural clusters in the data."
+        )
+        show_fig(results["fig_silhouette"])
+
 
 # main 
-def main():
-    st.set_page_config(
-        page_title="Data Exploration — Insurance Cost Predictor",
-        page_icon="",
-        layout="wide",
+def render_page():
+    """Render the exploration page inside the full app shell."""
+    page_header(
+        "Data Exploration",
+        "Dataset Patterns & EDA",
+        "Interactive exploration of the Kaggle Medical Insurance dataset (1,338 records). "
+        "Use the sidebar filters to slice by region and smoker status.",
     )
-
-    st.title("Data Exploration")
-    st.markdown(
-        "Interactive exploration of the "
-        "[Kaggle Medical Insurance](https://www.kaggle.com/datasets/mirichoi0218/insurance) "
-        "dataset (1,338 records, 7 features). Use the sidebar filters to "
-        "slice the data by region and smoker status."
-    )
+    tags("1,338 records", "7 features", "EDA + K-Means clustering")
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
     # Load full dataset
     df_full = load_raw_data()
@@ -289,6 +295,16 @@ def main():
 
     st.divider()
     section_kmeans(df_full)  # always use full data for clustering
+
+
+def main():
+    st.set_page_config(
+        page_title="Data Exploration — Insurance Cost Predictor",
+        page_icon="",
+        layout="wide",
+    )
+    inject_global_styles()
+    render_page()
 
 
 if __name__ == "__main__":

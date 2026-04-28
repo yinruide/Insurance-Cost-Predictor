@@ -1,113 +1,170 @@
-"""Page 2: Live cost predictor with feature importance."""
+"""
+page_cost_predictor.py
+Live Cost Predictor — Page 2
+
+UX decisions
+────────────
+• st.form wrapper: sliders don't trigger reruns until the CTA is clicked.
+• st.session_state: the last prediction persists across reruns so tweaking
+  one input after submitting doesn't blank the result panel.
+• Result panel is always visible on the right — either an empty-state
+  prompt or the actual output. The user always knows where to look.
+• No decorative chips that look like buttons.
+"""
+
 import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import joblib
-import os
-import sys
 
-# Allow imports from project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from shared import (
+    block2_summary_text,
+    card,
+    empty_state,
+    make_prediction,
+    metric_tile,
+    page_header,
+    plot_feature_impacts,
+    result_panel,
+    routing_card,
+)
 
-# ── Helper: load best available model ─────────────────────────────────────────
-@st.cache_resource
-def load_model():
-    """Load the best available trained model."""
-    model_paths = [
-        ("XGBoost",       "saved_models/xgboost_model.pkl"),
-        ("Random Forest", "saved_models/random_forest.pkl"),
-    ]
-    for name, path in model_paths:
-        if os.path.exists(path):
-            return name, joblib.load(path)
-    return None, None
+_REGIONS = ["northeast", "northwest", "southeast", "southwest"]
 
-def preprocess_input(age, sex, bmi, children, smoker, region):
-    """Encode user inputs to match training encoding."""
-    sex_enc    = 0 if sex == "Female" else 1
-    smoker_enc = 1 if smoker == "Yes" else 0
-    region_map = {"northeast": 0, "northwest": 1, "southeast": 2, "southwest": 3}
-    region_enc = region_map[region]
-    return pd.DataFrame([[age, sex_enc, bmi, children, smoker_enc, region_enc]],
-                        columns=["age", "sex", "bmi", "children", "smoker", "region"])
 
-def plot_feature_importance(model, model_name):
-    """Bar chart of feature importances."""
-    features = ["age", "sex", "bmi", "children", "smoker", "region"]
-    importances = model.feature_importances_
-    sorted_idx  = np.argsort(importances)
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    colors = ["#e63946" if features[i] == "smoker" else "#457b9d" for i in sorted_idx]
-    ax.barh([features[i] for i in sorted_idx], importances[sorted_idx], color=colors)
-    ax.set_xlabel("Importance Score")
-    ax.set_title(f"Feature Importance — {model_name}")
-    ax.spines[["top", "right"]].set_visible(False)
-    plt.tight_layout()
-    return fig
-
-# ── Page ───────────────────────────────────────────────────────────────────────
-def show():
-    st.title("Live Insurance Cost Predictor")
-    st.markdown("Enter your details below to get a personalized insurance cost estimate.")
-
-    model_name, model = load_model()
-
-    if model is None:
-        st.error(
-            "No trained model found. Please run `models/random_forest.py` or "
-            "`models/xgboost_model.py` first to generate a saved model."
-        )
-        return
-
-    st.info(f"Using model: **{model_name}**")
-    st.markdown("---")
-
-    # ── Input form ────────────────────────────────────────────────────────────
-    col1, col2 = st.columns(2)
-
+def _profile_form() -> dict:
+    """Compact two-column profile form inside an st.form."""
+    col1, col2 = st.columns(2, gap="medium")
     with col1:
-        age      = st.slider("Age", min_value=18, max_value=100, value=30)
-        sex      = st.selectbox("Sex", ["Female", "Male"])
-        bmi      = st.number_input("BMI", min_value=10.0, max_value=60.0, value=25.0, step=0.1,
-                                   help="Body Mass Index. Healthy range: 18.5–24.9")
+        age      = st.slider("Age", 18, 64, 35)
+        bmi      = st.slider("BMI", 15.0, 54.0, 27.5, step=0.1)
+        children = st.select_slider("Children", options=list(range(6)), value=1)
     with col2:
-        children = st.slider("Number of Children", min_value=0, max_value=10, value=0)
-        smoker   = st.selectbox("Smoker?", ["No", "Yes"])
-        region   = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
+        sex    = st.selectbox("Sex", ["female", "male"])
+        region = st.selectbox("Region", _REGIONS)
+        smoker_status = st.radio(
+            "Smoking status",
+            ["no", "yes", "unknown"],
+            horizontal=True,
+            help=(
+                "Select 'unknown' to let the model estimate smoker probability "
+                "from the rest of the profile using the Block 2 classifier."
+            ),
+        )
+    return {
+        "age": age, "bmi": bmi, "children": children,
+        "sex": sex, "region": region, "smoker_status": smoker_status,
+    }
 
-    st.markdown("---")
 
-    if st.button("Predict My Insurance Cost", use_container_width=True):
-        input_df  = preprocess_input(age, sex, bmi, children, smoker, region)
-        prediction = model.predict(input_df)[0]
+def _render_result(pred: dict):
+    """Render the full result panel for a computed prediction."""
+    # Primary output — big number + range bar
+    result_panel(pred["estimate"], pred["q10"], pred["q90"], pred["q50"])
 
-        # Result
-        st.success(f"### Estimated Annual Insurance Cost: **${prediction:,.2f}**")
+    # Two supporting metrics
+    c1, c2 = st.columns(2, gap="small")
+    with c1:
+        if pred["segment"] == "weighted blend":
+            metric_tile(
+                "Smoker probability",
+                f"{pred['smoker_probability']:.0%}",
+                "estimated from demographics",
+            )
+        else:
+            label = "Smoker path" if pred["segment"] == "smoker segment" else "Non-smoker path"
+            metric_tile(label, "used directly", "status was provided")
+    with c2:
+        metric_tile(
+            "Scenario spread",
+            f"${abs(pred['smoker_cost'] - pred['nonsmoker_cost']):,.0f}",
+            f"smoker ${pred['smoker_cost']:,.0f} · non-smoker ${pred['nonsmoker_cost']:,.0f}",
+        )
 
-        # Smoker warning
-        if smoker == "Yes":
-            st.warning(
-                "Smoking is the single largest driver of insurance costs. "
-                "Quitting could save you thousands of dollars per year."
+    # Routing explanation
+    routing_card(pred["segment"], block2_summary_text(pred))
+
+    # Feature impacts
+    st.markdown(
+        '<span class="section-label">What influenced this estimate</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Heuristic local drivers — feature importance × deviation from dataset median. "
+        "Not a formal SHAP value; use as directional guidance."
+    )
+    st.pyplot(plot_feature_impacts(pred["impacts"]))
+
+
+def render_page():
+    page_header(
+        "Live Predictor",
+        "Annual Cost Estimate",
+        "Enter a profile and get a predicted annual insurance cost, "
+        "an 80% uncertainty band, and an explanation of which model path was used.",
+    )
+
+    left, right = st.columns([1, 1.15], gap="large")
+
+    # ── Left: form ────────────────────────────────────────────────────────────
+    with left:
+        st.markdown('<span class="section-label">Profile inputs</span>', unsafe_allow_html=True)
+        with st.form("profile_form"):
+            profile = _profile_form()
+            submitted = st.form_submit_button(
+                "Estimate Annual Cost",
+                use_container_width=True,
             )
 
-        st.markdown("---")
+        if submitted:
+            with st.spinner("Running predictor…"):
+                st.session_state["last_prediction"] = make_prediction(profile)
 
-        # ── Feature importance ────────────────────────────────────────────────
-        st.subheader("What Drives Your Cost?")
-        st.markdown(
-            "The chart below shows how much each factor influences the model's prediction. "
-            "Red = highest impact feature."
+        # How-it-works card — always visible, below the form
+        card(
+            "Two-stage pipeline (Block 2)",
+            """
+            If smoker status is <strong>known</strong>, the profile routes directly to the
+            matching subgroup Random Forest regressor.<br><br>
+            If <strong>unknown</strong>, a logistic classifier first estimates smoker
+            probability from demographics, then the two subgroup estimates are blended
+            proportionally. Uncertainty bounds come from a separately trained
+            quantile regression model (q10 / q90).
+            """,
         )
-        fig = plot_feature_importance(model, model_name)
-        st.pyplot(fig)
 
-        # Breakdown table
-        st.subheader("Your Profile Summary")
-        summary = pd.DataFrame({
-            "Feature": ["Age", "Sex", "BMI", "Children", "Smoker", "Region"],
-            "Your Value": [age, sex, f"{bmi:.1f}", children, smoker, region],
-        })
-        st.table(summary)
+    # ── Right: result ─────────────────────────────────────────────────────────
+    with right:
+        pred = st.session_state.get("last_prediction")
+        if pred is None:
+            st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
+            empty_state(
+                "📋",
+                "No estimate yet",
+                "Fill in the profile on the left and click <strong>Estimate Annual Cost</strong>.",
+            )
+            st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
+            card(
+                "Demo tips",
+                """
+                Try these three profiles to show the full routing logic:<br><br>
+                <strong>Low risk</strong> — age 28, BMI 23, no children, non-smoker<br>
+                <strong>High risk</strong> — age 55, BMI 36, smoker<br>
+                <strong>Unknown</strong> — any profile with smoking status set to
+                <em>unknown</em> to demonstrate the classifier step
+                """,
+            )
+        else:
+            _render_result(pred)
+
+
+def main():
+    from shared import inject_global_styles
+    st.set_page_config(
+        page_title="Live Cost Predictor — Insurance",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+    inject_global_styles()
+    render_page()
+
+
+if __name__ == "__main__":
+    main()

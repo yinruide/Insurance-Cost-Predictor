@@ -2,5 +2,8 @@ numpy
 pandas
 scikit-learn
 torch
+xgboost
 streamlit
 matplotlib
+seaborn
+joblib

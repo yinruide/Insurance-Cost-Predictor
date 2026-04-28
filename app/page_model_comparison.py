@@ -1,192 +1,180 @@
-"""Page 3: Model comparison dashboard."""
+"""
+page_model_comparison.py
+Model Comparison — Page 3
 
-from pathlib import Path
-import json
+Shows held-out metrics for all models, highlights the best performer,
+explains the MDN as the from-scratch implementation, and includes the
+quantile interval diagnostics chart.
+"""
 
 import pandas as pd
-import matplotlib.pyplot as plt
 import streamlit as st
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-SAVED_DIR = ROOT / "saved_models"
+from shared import (
+    PALETTE,
+    SAVED_DIR,
+    card,
+    load_comparison_metrics,
+    metric_tile,
+    page_header,
+    plot_model_comparison,
+    plot_prediction_interval,
+    tags,
+)
 
 
-@st.cache_data
-def load_json(path):
-    with open(path, "r") as f:
-        return json.load(f)
+def _leaderboard_html(df: pd.DataFrame) -> str:
+    """Custom HTML leaderboard — best row highlighted, no raw st.dataframe."""
+    best_model = df.iloc[0]["Model"]
+    rows = ""
+    for _, row in df.iterrows():
+        is_best = row["Model"] == best_model
+        row_bg = PALETTE["accent_bg"] if is_best else PALETTE["surface"]
+        badge = (
+            f'<span style="display:inline-block; padding:0.15rem 0.45rem; '
+            f'background:{PALETTE["accent"]}; color:white; border-radius:4px; '
+            f'font-size:0.65rem; font-weight:700; letter-spacing:0.05em; '
+            f'text-transform:uppercase; margin-left:0.4rem; vertical-align:middle;">Best</span>'
+            if is_best else ""
+        )
+        r2_color = PALETTE["green"] if is_best else PALETTE["ink"]
+        r2_weight = "700" if is_best else "600"
+        rows += (
+            f'<tr style="background:{row_bg};">'
+            f'<td style="padding:0.7rem 0.875rem; border-bottom:1px solid {PALETTE["border"]}; color:{PALETTE["ink"]}; vertical-align:middle;">{row["Model"]}{badge}</td>'
+            f'<td style="padding:0.7rem 0.875rem; border-bottom:1px solid {PALETTE["border"]}; text-align:right; color:{r2_color}; font-weight:{r2_weight}; font-variant-numeric:tabular-nums; vertical-align:middle;">{row["R2"]:.3f}</td>'
+            f'<td style="padding:0.7rem 0.875rem; border-bottom:1px solid {PALETTE["border"]}; text-align:right; color:{PALETTE["ink"]}; font-variant-numeric:tabular-nums; vertical-align:middle;">${row["RMSE"]:,.0f}</td>'
+            f'<td style="padding:0.7rem 0.875rem; border-bottom:1px solid {PALETTE["border"]}; text-align:right; color:{PALETTE["ink"]}; font-variant-numeric:tabular-nums; vertical-align:middle;">${row["MAE"]:,.0f}</td>'
+            f'<td style="padding:0.7rem 0.875rem; border-bottom:1px solid {PALETTE["border"]}; color:{PALETTE["ink_2"]}; font-size:0.78rem; vertical-align:middle;">{row["Notes"]}</td>'
+            f'</tr>'
+        )
+    html = (
+        f'<div style="background:{PALETTE["surface"]}; border:1px solid {PALETTE["border"]}; border-radius:12px; overflow:hidden; margin-bottom:1.5rem;">'
+        f'<table style="width:100%; border-collapse:collapse; font-size:0.875rem;">'
+        f'<thead><tr>'
+        f'<th style="background:{PALETTE["surface_2"]}; padding:0.6rem 0.875rem; text-align:left; font-size:0.68rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{PALETTE["ink_3"]}; border-bottom:1px solid {PALETTE["border"]};">Model</th>'
+        f'<th style="background:{PALETTE["surface_2"]}; padding:0.6rem 0.875rem; text-align:right; font-size:0.68rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{PALETTE["ink_3"]}; border-bottom:1px solid {PALETTE["border"]};">R²</th>'
+        f'<th style="background:{PALETTE["surface_2"]}; padding:0.6rem 0.875rem; text-align:right; font-size:0.68rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{PALETTE["ink_3"]}; border-bottom:1px solid {PALETTE["border"]};">RMSE</th>'
+        f'<th style="background:{PALETTE["surface_2"]}; padding:0.6rem 0.875rem; text-align:right; font-size:0.68rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{PALETTE["ink_3"]}; border-bottom:1px solid {PALETTE["border"]};">MAE</th>'
+        f'<th style="background:{PALETTE["surface_2"]}; padding:0.6rem 0.875rem; text-align:left; font-size:0.68rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{PALETTE["ink_3"]}; border-bottom:1px solid {PALETTE["border"]};">Notes</th>'
+        f'</tr></thead>'
+        f'<tbody>{rows}</tbody>'
+        f'</table></div>'
+    )
+    return html
 
 
-@st.cache_data
-def load_quantile_predictions():
-    path = SAVED_DIR / "quantile_predictions.csv"
-    if path.exists():
-        return pd.read_csv(path)
-    return None
-
-
-def build_comparison_table():
-    rows = []
-
-    rf_path = SAVED_DIR / "rf_metrics.json"
-    if rf_path.exists():
-        rf = load_json(rf_path)
-        rows.append({
-            "Model": "Random Forest",
-            "MAE": rf["metrics"]["MAE"],
-            "RMSE": rf["metrics"]["RMSE"],
-            "R2": rf["metrics"]["R2"],
-            "Interval Coverage": None,
-            "Avg Interval Width": None,
-            "Type": "Point prediction",
-        })
-
-    xgb_path = SAVED_DIR / "xgb_metrics.json"
-    if xgb_path.exists():
-        xgb = load_json(xgb_path)
-        rows.append({
-            "Model": "XGBoost",
-            "MAE": xgb["metrics"]["MAE"],
-            "RMSE": xgb["metrics"]["RMSE"],
-            "R2": xgb["metrics"]["R2"],
-            "Interval Coverage": None,
-            "Avg Interval Width": None,
-            "Type": "Point prediction",
-        })
-
-    mlp_path = SAVED_DIR / "mlp_metrics.json"
-    if mlp_path.exists():
-        mlp = load_json(mlp_path)
-        rows.append({
-            "Model": "MLP",
-            "MAE": mlp["mae"],
-            "RMSE": mlp["rmse"],
-            "R2": mlp["r2"],
-            "Interval Coverage": None,
-            "Avg Interval Width": None,
-            "Type": "Point prediction",
-        })
-
-    q_path = SAVED_DIR / "quantile_metrics.json"
-    if q_path.exists():
-        q = load_json(q_path)
-        rows.append({
-            "Model": "Quantile Regression",
-            "MAE": q["mae_median_dollar"],
-            "RMSE": q["rmse_median_dollar"],
-            "R2": q["r2_median_dollar"],
-            "Interval Coverage": q["interval_80_coverage"],
-            "Avg Interval Width": q["avg_interval_width_dollar"],
-            "Type": "Prediction interval",
-        })
-
-    return pd.DataFrame(rows)
-
-
-def metric_bar_chart(df, metric, title):
-    plot_df = df.dropna(subset=[metric]).copy()
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(plot_df["Model"], plot_df[metric])
-    ax.set_title(title)
-    ax.set_ylabel(metric)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    plt.xticks(rotation=15)
-    plt.tight_layout()
-    return fig
-
-
-def quantile_interval_plot(pred_df, n=50):
-    plot_df = pred_df.head(n).copy()
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    x = range(len(plot_df))
-
-    ax.plot(x, plot_df["actual_charges"], label="Actual")
-    ax.plot(x, plot_df["q50"], label="Median prediction")
-    ax.fill_between(
-        x,
-        plot_df["q10"],
-        plot_df["q90"],
-        alpha=0.25,
-        label="80% interval"
+def render_page():
+    page_header(
+        "Model Comparison",
+        "Results on Held-Out Test Data",
+        "All metrics are evaluated on the same 20% test split (random_state=12138). "
+        "The best overall model by R² is highlighted.",
     )
 
-    ax.set_title("Quantile Regression Prediction Intervals (first 50 test cases)")
-    ax.set_xlabel("Test sample")
-    ax.set_ylabel("Charges ($)")
-    ax.legend()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    plt.tight_layout()
-    return fig
+    with st.spinner("Loading model metrics…"):
+        bundle = load_comparison_metrics()
 
+    leaderboard = bundle["leaderboard"].copy()
+    best        = leaderboard.iloc[0]
+    qr          = bundle["quantile"]
+    mdn         = bundle["mdn"]
 
-def show():
-    st.title("Model Comparison Dashboard")
-    st.write(
-        "This page compares the main predictive models used in the project. "
-        "We report standard regression metrics for point prediction models, "
-        "and also show uncertainty information for quantile regression."
+    # ── Top-line metrics ──────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4, gap="small")
+    with c1:
+        metric_tile("Best R²",         f"{best['R2']:.3f}",                  best["Model"])
+    with c2:
+        metric_tile("Best RMSE",       f"${leaderboard['RMSE'].min():,.0f}",
+                    leaderboard.loc[leaderboard["RMSE"].idxmin(), "Model"])
+    with c3:
+        metric_tile("80% coverage",    f"{qr['interval_80_coverage']:.1%}",  "Quantile regression")
+    with c4:
+        metric_tile("MDN R²",          f"{mdn['r2']:.3f}",                   "From-scratch model")
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    # ── Leaderboard + chart ───────────────────────────────────────────────────
+    left, right = st.columns([1.1, 0.9], gap="large")
+
+    with left:
+        st.markdown('<span class="section-label">Full leaderboard</span>', unsafe_allow_html=True)
+        st.markdown(_leaderboard_html(leaderboard), unsafe_allow_html=True)
+
+    with right:
+        st.markdown('<span class="section-label">R² comparison</span>', unsafe_allow_html=True)
+        st.pyplot(plot_model_comparison(leaderboard))
+
+    # ── Takeaway card ─────────────────────────────────────────────────────────
+    card(
+        "Why we use multiple models",
+        f"""
+        <strong>Linear regression</strong> gives an interpretable baseline on log-transformed charges.<br>
+        <strong>Random Forest</strong> captures nonlinear feature interactions and is the top performer
+        (R² = {best['R2']:.3f}) — this is the model used in the live predictor.<br>
+        <strong>MLP</strong> provides a neural alternative with comparable performance.<br>
+        <strong>Quantile regression</strong> adds calibrated uncertainty bounds (80% interval
+        coverage: {qr['interval_80_coverage']:.1%}).<br>
+        <strong>MDN</strong> is our from-scratch implementation: a PyTorch mixture density network
+        that models charge distributions as a mixture of Gaussians — suited to the bimodal
+        smoker/non-smoker structure visible in the EDA.
+        """,
     )
 
-    df = build_comparison_table()
+    st.divider()
 
-    if df.empty:
-        st.error("No saved model metrics found. Please run the training scripts first.")
-        return
+    # ── Quantile interval diagnostics ─────────────────────────────────────────
+    st.markdown('<span class="section-label">Uncertainty diagnostics · quantile regression intervals</span>', unsafe_allow_html=True)
+    try:
+        quantile_predictions = pd.read_csv(SAVED_DIR / "quantile_predictions.csv")
+        st.pyplot(plot_prediction_interval(quantile_predictions))
+        st.caption(
+            "First 50 test examples. Gold band = 80% predicted interval; "
+            "line = median prediction; dots = actual charges."
+        )
+    except FileNotFoundError:
+        st.info("Run quantile_regression.py to generate interval diagnostics.")
 
-    st.markdown("---")
-    st.subheader("Overall Comparison Table")
-    st.dataframe(df)
+    st.divider()
 
-    st.markdown("---")
-    st.subheader("Best Model Snapshot")
+    # ── MDN deep-dive ─────────────────────────────────────────────────────────
+    st.markdown('<span class="section-label">From-scratch implementation · Mixture Density Network</span>', unsafe_allow_html=True)
+    tags("PyTorch", f"{mdn['n_components']} Gaussian components", "Trained from scratch", "NLL objective")
 
-    best_mae_model = df.dropna(subset=["MAE"]).sort_values("MAE").iloc[0]
-    best_rmse_model = df.dropna(subset=["RMSE"]).sort_values("RMSE").iloc[0]
-    best_r2_model = df.dropna(subset=["R2"]).sort_values("R2", ascending=False).iloc[0]
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Lowest MAE", best_mae_model["Model"], f'{best_mae_model["MAE"]:.2f}')
-    c2.metric("Lowest RMSE", best_rmse_model["Model"], f'{best_rmse_model["RMSE"]:.2f}')
-    c3.metric("Highest R2", best_r2_model["Model"], f'{best_r2_model["R2"]:.4f}')
+    d1, d2, d3 = st.columns(3, gap="small")
+    with d1:
+        metric_tile("MDN R²",      f"{mdn['r2']:.3f}",          "Held-out test set")
+    with d2:
+        metric_tile("MDN RMSE",    f"${mdn['rmse']:,.0f}",       f"{mdn['n_components']} components")
+    with d3:
+        metric_tile("Best val NLL", f"{mdn['best_val_nll']:.2f}", "Training objective (NLL)")
 
-    st.markdown("---")
-    st.subheader("Metric Comparison")
-    tab1, tab2, tab3, tab4 = st.tabs(["MAE", "RMSE", "R2", "Quantile Intervals"])
-
-    with tab1:
-        st.pyplot(metric_bar_chart(df, "MAE", "MAE by Model"))
-
-    with tab2:
-        st.pyplot(metric_bar_chart(df, "RMSE", "RMSE by Model"))
-
-    with tab3:
-        st.pyplot(metric_bar_chart(df, "R2", "R2 by Model"))
-
-    with tab4:
-        q_path = SAVED_DIR / "quantile_metrics.json"
-        pred_df = load_quantile_predictions()
-
-        if q_path.exists():
-            q = load_json(q_path)
-            c1, c2 = st.columns(2)
-            c1.metric("80% Interval Coverage", f'{q["interval_80_coverage"]:.3f}')
-            c2.metric("Average Interval Width", f'${q["avg_interval_width_dollar"]:,.2f}')
-
-        if pred_df is not None:
-            st.pyplot(quantile_interval_plot(pred_df))
-        else:
-            st.info("No quantile prediction CSV found.")
-
-    st.markdown("---")
-    st.subheader("Takeaways")
-    st.write(
-        "- XGBoost currently has the strongest overall point-prediction performance.\n"
-        "- Random Forest is close behind and remains easy to interpret.\n"
-        "- MLP performs reasonably well and captures nonlinear patterns.\n"
-        "- Quantile Regression is weaker for point prediction, but it provides useful uncertainty intervals."
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    card(
+        None,
+        """
+        The MDN outputs a mixture of Gaussians over the charge distribution rather than
+        a single point estimate. This is well-suited to insurance data because the
+        smoker/non-smoker split creates a <strong>bimodal outcome distribution</strong>
+        — a single Gaussian cannot represent it well. We implemented the full forward
+        pass, NLL loss, and training loop from scratch in PyTorch with no high-level
+        mixture API. Predictions are recovered as the expectation of the mixture.
+        """,
     )
+
+
+def main():
+    from shared import inject_global_styles
+    st.set_page_config(
+        page_title="Model Comparison — Insurance",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+    inject_global_styles()
+    render_page()
+
+
+if __name__ == "__main__":
+    main()
