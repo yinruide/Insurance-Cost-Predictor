@@ -2,8 +2,10 @@
 
 A Streamlit web app that predicts annual medical insurance costs using ensemble methods, neural networks, and a from-scratch Mixture Density Network.
 
-**Team:** Gentle Eagles (Ruide Yin, Ben Ronen, Allison Zhu, Ruize Ma)
-**Course:** Spring 2026, Fundamentals of Machine Learning, Final Project, NYU
+**Team:** Gentle Eagles (Ruide Yin, Ben Ronen, Allison Zhu, Ruize Ma)   
+
+**Course:** Spring 2026, Fundamentals of Machine Learning, Final Project, NYU   
+
 **Dataset:** [Kaggle Medical Insurance Dataset](https://www.kaggle.com/datasets/mirichoi0218/insurance) — 1,338 records, 7 features, no missing values
 
 ---
