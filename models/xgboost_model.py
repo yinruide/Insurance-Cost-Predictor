@@ -32,7 +32,7 @@ def tune_xgboost(X_train, y_train):
         param_grid=param_grid,
         cv=5,
         scoring="neg_mean_squared_error",
-        n_jobs=-1,
+        n_jobs=1,
         verbose=1,
     )
     grid_search.fit(X_train, y_train)
@@ -55,7 +55,7 @@ def get_feature_importance(model, feature_names):
     importances = model.feature_importances_
     return dict(zip(feature_names, [round(float(v), 4) for v in importances]))
 
-if __name__ == "__main__":
+def fit_xgboost():
     df = get_regressor_data_tree(path=str(ROOT / "data" / "insurance.csv"))
     feature_names = [c for c in df.columns if c not in {"charges", "log_charges", "smoker"}]
     X_train, X_test, y_train, y_test = split_unscaled(df, "charges")
@@ -77,3 +77,7 @@ if __name__ == "__main__":
         json.dump(results, f, indent=2)
 
     print("\nSaved to saved_models/")
+    return results
+
+if __name__ == "__main__":
+    fit_xgboost()

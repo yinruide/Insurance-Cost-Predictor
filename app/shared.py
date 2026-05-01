@@ -1057,6 +1057,9 @@ def load_comparison_metrics() -> dict:
     if not files["linear"].exists():
         from linear_regression import fit_linear_regression
         fit_linear_regression()
+    if not files["xgb"].exists():
+        from xgboost_model import fit_xgboost
+        fit_xgboost()
     if not files["mlp"].exists():
         from mlp import fit_mlp
         fit_mlp()

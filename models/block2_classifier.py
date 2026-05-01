@@ -62,7 +62,7 @@ def train_rf_classifier(X_train, y_train):
         min_samples_leaf=1,
         class_weight="balanced_subsample",
         random_state=12138,
-        n_jobs=-1,
+        n_jobs=1,
     )
     model.fit(X_train, y_train)
     return model
@@ -109,7 +109,7 @@ def train_rf_regressor(X_train, y_train):
         max_depth=None,
         min_samples_leaf=2,
         random_state=12138,
-        n_jobs=-1,
+        n_jobs=1,
     )
     model.fit(X_train, y_train)
     return model
